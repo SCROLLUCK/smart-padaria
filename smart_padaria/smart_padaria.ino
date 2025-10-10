@@ -31,7 +31,7 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 DHT_Unified dht(DHTPIN, DHTTYPE);  
 
 // Variáveis de controle de tempo
-uint32_t delayExibicaoMS = 2000;   // Tempo de exibição de cada tela (2 segundos)
+uint32_t delayExibicaoMS = 4000;   // Tempo de exibição de cada tela (2 segundos)
 unsigned long tempoInicio;         // Armazena o valor de millis() (tempo total em ms desde o boot) no setup()
 
 // Variável de controle para alternar as telas
