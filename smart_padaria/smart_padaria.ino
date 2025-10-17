@@ -1,157 +1,273 @@
 /*
-  PROJETO SMART PADARIA: MONITORAMENTO DE FERMENTAÇÃO
+  PROJETO SMART PADARIA: MONITORAMENTO DE FERMENTAÇÃO COM CONTROLE IR
+*/
 
-  DESCRIÇÃO: Este código lê a temperatura e umidade do ar através do sensor DHT11,
-  controla o tempo decorrido e exibe os dados em um Display LCD 16x2 e no Serial Monitor do Arduino.
-  
-  HARDWARE NECESSÁRIO:
-  - Arduino Uno (ATmega328P)
-  - Sensor DHT11 (ou DHT22)
-  - Display LCD 16x2 (via interface paralela)
-  - Protoboard
-  - Resistor de 10K
-  - Jumpers para ligação no protoboard
- */
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <LiquidCrystal.h>
+#include <IRremote.h> // 2.6.0
 
-#include<Adafruit_Sensor.h>       //Biblioteca base para sensores Adfruit (DHT)
-#include<DHT.h>                   // Biblioteca DHT para leitura de dados do sensor
-#include<DHT_U.h>                 // Biblioteca Unified Sensor para acesso a eventos e metadados
-#include<LiquidCrystal.h>         // Biblioteca para controle do Display LCD padrão
-
-
-// Objeto LCD: Inicializa a biblioteca com os pinos de interface
-// Pinos: (RS, E, D4, D5, D6, D7) conectados ao Arduino
+// Objeto LCD
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7); 
 
-// --- Configurações do Sensor DHT ---
-#define DHTTYPE DHT11              // Define o tipo de sensor que está sendo utilizado (DHT11)
-#define DHTPIN 2                   // Define o pino digital do Arduino ao qual o pino de dados do sensor está conectado  
+// Configurações
+#define DHTTYPE DHT11
+#define DHTPIN 2
+#define RECV_PIN 11
+#define BUZER_PIN 10
 
-// Cria uma instância unificada do sensor DHT, usando o pino e o tipo definidos
-DHT_Unified dht(DHTPIN, DHTTYPE);  
+// Sensor DHT
+DHT_Unified dht(DHTPIN, DHTTYPE);
 
-// Variáveis de controle de tempo
-uint32_t delayExibicaoMS = 4000;   // Tempo de exibição de cada tela (2 segundos)
-unsigned long tempoInicio;         // Armazena o valor de millis() (tempo total em ms desde o boot) no setup()
+// Configura sensor IR
+IRrecv irrecv(RECV_PIN);
+decode_results results;
 
-// Variável de controle para alternar as telas
+// Variáveis de controle
+uint32_t delayExibicaoMS = 2000;
+unsigned long tempoInicio;
 bool mostrarTempo = false;
 
+// Variáveis para controle do IR
+unsigned long ultimoComandoIR = 0;
+bool mostrarIR = false;
+unsigned long tempoExibicaoIR = 2000;
+String ultimoComando = "Nenhum";
+unsigned long ultimaLeituraIR = 0;
+const unsigned long DEBOUNCE_IR = 300; // Tempo mínimo entre leituras
+
+// COMANDOS DO SEU CONTROLE REMOTO
+const unsigned long IR_1           = 0xFFA25D;  // 1
+const unsigned long IR_2           = 0xFF629D;  // 2
+const unsigned long IR_3           = 0xFFE21D;  // 3
+const unsigned long IR_4           = 0xFF22DD;  // 4
+const unsigned long IR_5           = 0xFF02FD;  // 5
+const unsigned long IR_6           = 0xFFC23D;  // 6
+const unsigned long IR_7           = 0xFFE01F;  // 7
+const unsigned long IR_8           = 0xFFA857;  // 8
+const unsigned long IR_9           = 0xFF906F;  // 9
+const unsigned long IR_ASTERISCO   = 0xFF6897;  // *
+const unsigned long IR_0           = 0xFF9867;  // 0
+const unsigned long IR_HASHTAG     = 0xFFB04F;  // #
+const unsigned long IR_SET_UP      = 0xFF18E7;  // up
+const unsigned long IR_SET_LEFT    = 0xFF10EF;  // left
+const unsigned long IR_OK          = 0xFF38C7;  // ok
+const unsigned long IR_SET_RIGHT   = 0xFF5AA5;  // right
+const unsigned long IR_SET_DOWN    = 0xFF4AB5;  // down
 
 void setup() {
-  // Inicializa a comunicação serial a 9600 bps para depuração e monitoramento no PC
   Serial.begin(9600);
-
-  // Inicializa o sensor DHT
+  pinMode(BUZER_PIN,OUTPUT);
+  
+  irrecv.enableIRIn(); // Inicia o receptor
+  
+  // Inicializa sensores
   dht.begin();
-
-   // Variável local que armazena informações sobre o sensor
-  sensor_t sensor;
-
-  // Inicializa o Display LCD
+  
+  // Inicializa LCD
   lcd.begin(16, 2);
-
-
-  // Mensagem de boas-vindas na Linha 0
   lcd.print("Smart Padaria!");
-  // Move o cursor para a primeira coluna da segunda linha (0, 1)
   lcd.setCursor(0, 1);
-  // Mensagem de inicialização na Linha 1
   lcd.print("Iniciando...");
   
-  // Pausa de 3 segundos para que o usuário veja a mensagem inicial antes de começar a leitura
-  delay(3000);
-
-  // Limpa o display para a exibição dos dados de leitura
+  delay(2000);
   lcd.clear();
-
-   //Inicializa o contador de tempo.
-  tempoInicio = millis(); 
+  tempoInicio = millis();
 }
 
 void loop() {
-  // Lógica de alternância de tela: O display muda a cada 'delayExibicaoMS'
-  // O valor de 'mostrarTempo' inverte a cada ciclo de exibição
-  mostrarTempo = !mostrarTempo; 
 
-  if(!mostrarTempo){
-      // Objeto para armazenar o "evento" (leitura) dos sensores.
-      sensors_event_t event;
-
-      // --- Leitura da Temperatura ---
-      dht.temperature().getEvent(&event);
-      
-      //Exibição da Temperatura e umidade no Serial Monitor
-      Serial.println("--------------------");
-
-      if(isnan(event.temperature)){
-        Serial.println("Erro na leitura da Temperatura!");
-      } else{
-        Serial.print("Temperatura: ");
-        Serial.print(event.temperature, 1);
-        Serial.println(" ºC");
-
-        // 1. Exibição no LCD (Linha 0)
-        lcd.setCursor(0, 0);
-        // Limpar apenas o necessário para não piscar
-        lcd.print("Temp: ");
-        // Imprime o valor com uma casa decimal (1)
-        lcd.print(event.temperature, 1); 
-        lcd.print(" C ");
-      }
+  verificarIR();
   
-
-      // --- Leitura da Umidade ---
-      // Obtém o evento de umidade e armazena os dados no mesmo objeto 'event'
-      dht.humidity().getEvent(&event); 
-
-      if(isnan(event.relative_humidity)){
-        Serial.print("Erro na leitura da Umidade!");
-      }else{
-        Serial.print("Umidade: ");
-        Serial.print(event.relative_humidity);
-        Serial.println("%");
-
-        // 2. Exibição no LCD (Linha 1)
-        lcd.setCursor(0, 1);
-        lcd.print("Umidade: ");
-        // Imprime o valor com uma casa decimal (1)
-        lcd.print(event.relative_humidity, 1);
-        lcd.print("%  "); 
-      }
-  }else {
-
-    // Calcula o tempo decorrido total em milissegundos
-    unsigned long tempoDecorrido = millis() - tempoInicio; 
-    
-    // Converte milissegundos em minutos e segundos
-    int segundosTotais = tempoDecorrido / 1000;
-    int minutos = segundosTotais / 60;
-    int segundos = segundosTotais % 60; // Resto da divisão é o segundo
-    
-    // Exibe no Serial
-    Serial.print("Tempo Decorrido: ");
-    Serial.print(minutos);
-    Serial.print("m ");
-    Serial.print(segundos);
-    Serial.println("s");
-
-    // Exibe no LCD
-    lcd.clear(); // Limpa a tela para a nova mensagem
-    lcd.setCursor(0, 0);
-    lcd.print("Fermentacao:");
-    
-    lcd.setCursor(0, 1);
-    // Adiciona um '0' à esquerda se o minuto/segundo for menor que 10 (formato MM:SS)
-    if (minutos < 10) lcd.print("0");
-    lcd.print(minutos);
-    lcd.print("m ");
-    if (segundos < 10) lcd.print("0");
-    lcd.print(segundos);
-    lcd.print("s");
+  // Controla a exibição
+  if (mostrarIR) {
+    exibirComandoIR();
+  } else {
+    exibirDadosNormais();
   }
+  
+  delay(50); // Reduzido para melhor responsividade
+}
 
-  // Pausa antes da próxima alternância de tela/leitura.
-  // A frequência de atualização de TELA 1 e TELA 2 é controlada por esta linha.
-  delay(delayExibicaoMS);
+void verificarIR() {
+  // Verifica debounce - evita leituras muito rápidas
+  if (millis() - ultimaLeituraIR < DEBOUNCE_IR) {
+    return;
+  }
+  
+  // Detecta comandos IR usando a biblioteca
+  if (irrecv.decode(&results)) {
+    unsigned long comando = results.value;
+    
+    // Ignora repetições e valores inválidos
+    if (comando != 0xFFFFFFFF && comando != 0 && comando != ultimoComandoIR) {
+      String comandoNome = identificarComandoIR(comando);
+      
+      ultimoComando = comandoNome;
+      
+      // Ativa a exibição do IR
+      mostrarIR = true;
+      ultimoComandoIR = comando;
+      ultimaLeituraIR = millis();
+      
+      // Log no serial
+      Serial.print("CONTROLE: ");
+      Serial.print(comandoNome);
+      Serial.print(" (0x");
+      Serial.print(comando, HEX);
+      Serial.print(") - ");
+      // Executa ação baseada no comando
+      executarAcaoIR(comando, comandoNome);
+    }
+    
+    // Prepara para próximo código
+    irrecv.resume();
+  }
+  
+  // Desativa a exibição do IR após o tempo determinado
+  if (mostrarIR && (millis() - ultimaLeituraIR > tempoExibicaoIR)) {
+    mostrarIR = false;
+    lcd.clear();
+  }
+}
+
+String identificarComandoIR(unsigned long valor) {
+  switch(valor) {
+    case IR_1:           return "BOTAO 1";
+    case IR_2:           return "BOTAO 2";
+    case IR_3:           return "BOTAO 3";
+    case IR_4:           return "BOTAO 4";
+    case IR_5:           return "BOTAO 5";
+    case IR_6:           return "BOTAO 6";
+    case IR_7:           return "BOTAO 7";
+    case IR_8:           return "BOTAO 8";
+    case IR_9:           return "BOTAO 9";
+    case IR_0:           return "BOTAO 0";
+    case IR_ASTERISCO:   return "REINICIAR TEMPO";
+    case IR_HASHTAG:     return "BOTAO #";
+    case IR_SET_UP:      return "CIMA";
+    case IR_SET_LEFT:    return "ESQUERDA";
+    case IR_OK:          return "OK";
+    case IR_SET_RIGHT:   return "DIREITA";
+    case IR_SET_DOWN:    return "BAIXO";
+    case 0xFFFFFFFF:     return "REPETICAO";
+    default: 
+      return "DESCONHECIDO";
+  }
+}
+
+
+void beep(int milisegundos){
+    analogWrite(BUZER_PIN, 200); 
+    delay(milisegundos);
+    analogWrite(BUZER_PIN, 0); 
+}
+
+void executarAcaoIR(unsigned long comando, String nome) {
+  Serial.print(">>> Acao executada: ");
+  beep(50);
+  if (comando == IR_ASTERISCO) {
+    tempoInicio = millis();
+  
+    exibirTempoFermentacao();
+  }
+  else if (comando == IR_OK) {
+    Serial.println("OK pressionado");
+    // Adicione aqui ações para o botão OK
+  }
+  else if (comando == IR_SET_UP) {
+    Serial.println("Cima pressionado");
+    // Adicione aqui ações para o botão CIMA
+  }
+  else if (comando == IR_SET_DOWN) {
+    Serial.println("Baixo pressionado");
+    // Adicione aqui ações para o botão BAIXO
+  }
+  else if (comando >= IR_1 && comando <= IR_9) {
+    int numero = comando - IR_1 + 1;
+    Serial.print("Numero ");
+    Serial.println(numero);
+    // Adicione aqui ações para os números
+  }
+  else {
+    Serial.println("Comando reconhecido");
+  }
+  ultimoComandoIR = 0;
+}
+
+void exibirComandoIR() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("CONTROLE:");
+  
+  lcd.setCursor(0, 1);  
+  lcd.print(ultimoComando);
+}
+
+void exibirDadosNormais() {
+  static unsigned long ultimaAtualizacao = 0;
+  
+  // Alterna entre telas a cada 2 segundos
+  if (millis() - ultimaAtualizacao > delayExibicaoMS) {
+    mostrarTempo = !mostrarTempo;
+    ultimaAtualizacao = millis();
+    lcd.clear();
+  }
+  
+  if (mostrarTempo) {
+    exibirTempoFermentacao();
+  } else {
+    exibirTemperaturaUmidade();
+  }
+}
+
+void exibirTemperaturaUmidade() {
+  sensors_event_t event;
+  
+  // Temperatura - Linha 0
+  lcd.setCursor(0, 0);
+  dht.temperature().getEvent(&event);
+  if (isnan(event.temperature)) {
+    lcd.print("Temp: Erro    ");
+  } else {
+    lcd.print("Temp: ");
+    lcd.print(event.temperature, 1);
+    lcd.print(" C   ");
+  }
+  
+  // Umidade - Linha 1
+  lcd.setCursor(0, 1);
+  dht.humidity().getEvent(&event);
+  if (isnan(event.relative_humidity)) {
+    lcd.print("Umid Erro    ");
+  } else {
+    lcd.print("Umid: ");
+    lcd.print(event.relative_humidity, 1);
+    lcd.print("%   ");
+  }
+}
+
+void exibirTempoFermentacao() {
+  unsigned long tempoDecorrido = millis() - tempoInicio;
+  int segundosTotais = tempoDecorrido / 1000;
+  int minutos = segundosTotais / 60;
+  int segundos = segundosTotais % 60;
+  int horas = minutos / 60;
+  minutos = minutos % 60;
+  
+  // Linha 0
+  lcd.setCursor(0, 0);
+  lcd.print("Tempo Ferm:    ");
+  
+  // Linha 1 - Formato HH:MM:SS
+  lcd.setCursor(0, 1);
+  if (horas < 10) lcd.print("0");
+  lcd.print(horas);
+  lcd.print(":");
+  if (minutos < 10) lcd.print("0");
+  lcd.print(minutos);
+  lcd.print(":");
+  if (segundos < 10) lcd.print("0");
+  lcd.print(segundos);
 }
